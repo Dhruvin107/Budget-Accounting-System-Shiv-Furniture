@@ -1,0 +1,85 @@
+{
+  "agent_id": "",
+  "channel": "voice",
+  "last_modification_timestamp": 1769893326334,
+  "agent_name": "Shiv Furniture Sales Assistant",
+  "response_engine": {
+    "type": "retell-llm",
+    "llm_id": "llm_64643d0aac3263fef6d4a8b23c87",
+    "version": 0
+  },
+  "language": "en-US",
+  "data_storage_setting": "everything",
+  "opt_in_signed_url": false,
+  "version": 0,
+  "is_published": false,
+  "post_call_analysis_model": "gpt-4.1-mini",
+  "pii_config": {
+    "mode": "post_call",
+    "categories": []
+  },
+  "voice_id": "11labs-Nico",
+  "max_call_duration_ms": 3600000,
+  "interruption_sensitivity": 0.9,
+  "allow_user_dtmf": true,
+  "user_dtmf_options": {},
+  "retellLlmData": {
+    "llm_id": "llm_64643d0aac3263fef6d4a8b23c87",
+    "version": 0,
+    "model": "gpt-4.1",
+    "general_prompt": "You are a phone call assistant for Shiv Furniture.\n\nStart every call by greeting the caller.\n\nThen say:\n\"Press 1 to create a sales order.\"\n\nIf the caller wants to create a sales order (presses 1 or says yes):\n\nAsk the following questions one by one:\n1. Ask for the product name.\n2. Ask for the quantity.\n3. Ask for notes. Notes are optional.\n\nRules:\n- If product name is unclear, ask again.\n- If quantity is not a number, ask again.\n- Do not calculate price or total.\n- Do not invent order numbers.\n- After collecting all details, call the tool named create_sales_order.\n\nAfter the tool returns a response:\n- Speak the message exactly as returned.\n- End the call politely.",
+    "general_tools": [
+      {
+        "type": "end_call",
+        "name": "end_call",
+        "description": "End the call when the conversation is complete or the user says goodbye."
+      },
+      {
+        "parameter_type": "json",
+        "headers": {},
+        "method": "POST",
+        "query_params": {},
+        "description": "Create a sales order by sending product name, quantity, and optional notes to backend",
+        "type": "custom",
+        "url": "https://relations-paperbacks-priorities-kit.trycloudflare.com/webhook/create-sales-order",
+        "args_at_root": false,
+        "timeout_ms": 120000,
+        "speak_after_execution": true,
+        "name": "create_sales_order",
+        "response_variables": {
+          "message": "$.message"
+        },
+        "parameters": {
+          "type": "object",
+          "required": [
+            "product_name",
+            "quantity"
+          ],
+          "properties": {
+            "product_name": {
+              "type": "string",
+              "description": "Name of the product"
+            },
+            "quantity": {
+              "type": "number",
+              "description": "Quantity of the product"
+            },
+            "notes": {
+              "type": "string",
+              "description": "Optional notes"
+            }
+          }
+        },
+        "speak_during_execution": false
+      }
+    ],
+    "start_speaker": "agent",
+    "knowledge_base_ids": [],
+    "kb_config": {
+      "top_k": 3,
+      "filter_score": 0.6
+    },
+    "last_modification_timestamp": 1769892409798,
+    "is_published": false
+  }
+}

@@ -1,0 +1,382 @@
+{
+  "name": "Shiv Furniture - Create Sales Order",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "create-sales-order",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "75c69386-4309-4acb-9553-e6683c125866",
+      "name": "Webhook - Receive Order from Retell AI",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        1088,
+        576
+      ],
+      "webhookId": "create-sales-order"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.body.product_name}}",
+              "operation": "isNotEmpty"
+            },
+            {
+              "value1": "={{$json.body.quantity}}",
+              "operation": "isNotEmpty"
+            },
+            {
+              "value1": "={{$json.body.quantity}}",
+              "operation": "largerEqual",
+              "value2": "1"
+            }
+          ]
+        }
+      },
+      "id": "b589293a-31e7-49f3-871e-9738219b5edd",
+      "name": "Validate Input Data",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        576
+      ],
+      "notes": "Validates that product_name exists, quantity is provided and > 0. Notes can be empty string."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"message\": \"Invalid input. Please provide valid product name and quantity greater than zero.\"}",
+        "options": {}
+      },
+      "id": "77f19709-3e63-43d9-b79e-db4402508078",
+      "name": "Return Validation Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1488,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "collection": "products",
+        "options": {}
+      },
+      "id": "ec19386d-663a-4741-aa60-0eef3f03639e",
+      "name": "Fetch Product Price from MongoDB",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1,
+      "position": [
+        1488,
+        480
+      ],
+      "credentials": {
+        "mongoDb": {
+          "id": "a9aLad3I90b93HYh",
+          "name": "MongoDB account"
+        }
+      },
+      "notes": "Queries products collection with case-insensitive regex match on product_name. Uses exact match with case-insensitive option."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.price}}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "1ff04eb6-447e-4901-9bf8-5502872388f3",
+      "name": "Check Product Found",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1680,
+        480
+      ],
+      "notes": "Verifies that product was found in database"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"message\": \"Product not found in our catalog. Please try a different product name.\"}",
+        "options": {}
+      },
+      "id": "84e05ea0-60cf-4fbc-a2bc-ed7d87a6ad4f",
+      "name": "Return Product Not Found Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1888,
+        624
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Get webhook data from Validate Input Data node (previous in chain)\n// Get product data from current node (Check Product Found)\nconst webhookData = $node[\"Validate Input Data\"].json.body;\nconst productData = $json;\n\n// Extract values\nconst price = productData.price;\nconst quantity = parseInt(webhookData.quantity);\nconst product_name = webhookData.product_name;\nconst notes = webhookData.notes || \"\";\n\n// Calculate line total\nconst line_total = price * quantity;\n\n// Calculate subtotal (same as line_total for single item)\nconst subtotal = line_total;\n\n// Calculate tax (18% of subtotal)\nconst tax_amount = Math.round(subtotal * 0.18 * 100) / 100;\n\n// Calculate total amount\nconst total_amount = subtotal + tax_amount;\n\n// Discount is always 0 as per requirements\nconst discount_amount = 0;\n\n// Return calculated values\nreturn {\n  json: {\n    product_name: product_name,\n    quantity: quantity,\n    price: price,\n    line_total: line_total,\n    subtotal: subtotal,\n    tax_amount: tax_amount,\n    discount_amount: discount_amount,\n    total_amount: total_amount,\n    notes: notes\n  }\n};"
+      },
+      "id": "79e3070e-73c0-4b3e-8cc7-d78ae8b512f6",
+      "name": "Calculate Subtotal, Tax, and Total",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1888,
+        368
+      ],
+      "notes": "Calculates: line_total = price × quantity, subtotal = line_total, tax_amount = 18% of subtotal, total_amount = subtotal + tax"
+    },
+    {
+      "parameters": {
+        "collection": "sales_orders",
+        "options": {
+          "limit": 1,
+          "sort": "{\"so_number\": -1}"
+        }
+      },
+      "id": "1710adc1-464c-4424-8208-830614d120dd",
+      "name": "Get Latest Sales Order Number",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1,
+      "position": [
+        2096,
+        368
+      ],
+      "credentials": {
+        "mongoDb": {
+          "id": "a9aLad3I90b93HYh",
+          "name": "MongoDB account"
+        }
+      },
+      "notes": "Retrieves the latest sales order by sorting so_number descending and limiting to 1 result. Uses find operation to query the collection."
+    },
+    {
+      "parameters": {
+        "functionCode": "// Get the latest SO number from MongoDB query (current item)\n// Get calculated data from Calculate Subtotal, Tax, and Total node\nconst latestOrderResult = $json;\nconst calculatedData = $node[\"Calculate Subtotal, Tax, and Total\"].json;\n\n// Get current date for year-month formatting\nconst now = new Date();\nconst year = now.getFullYear();\nconst month = String(now.getMonth() + 1).padStart(2, '0');\nconst currentYearMonth = `${year}${month}`;\n\n// Initialize next number\nlet nextNumber = 1;\n\n// If there's a previous order, parse and increment\n// MongoDB find returns an array, so check if we have results\nif (latestOrderResult && Array.isArray(latestOrderResult) && latestOrderResult.length > 0) {\n  const latestOrder = latestOrderResult[0];\n  if (latestOrder.so_number) {\n    const latestSONumber = latestOrder.so_number;\n    \n    // Parse SO-YYYYMM-XXXX format\n    const parts = latestSONumber.split('-');\n    \n    if (parts.length === 3) {\n      const latestYearMonth = parts[1];\n      const latestSequence = parseInt(parts[2]);\n      \n      // If same month, increment; otherwise reset to 1 for new month\n      if (latestYearMonth === currentYearMonth) {\n        nextNumber = latestSequence + 1;\n      } else {\n        nextNumber = 1;\n      }\n    }\n  }\n} else if (latestOrderResult && latestOrderResult.so_number) {\n  // Handle case where result is a single object (not array)\n  const latestSONumber = latestOrderResult.so_number;\n  const parts = latestSONumber.split('-');\n  \n  if (parts.length === 3) {\n    const latestYearMonth = parts[1];\n    const latestSequence = parseInt(parts[2]);\n    \n    if (latestYearMonth === currentYearMonth) {\n      nextNumber = latestSequence + 1;\n    } else {\n      nextNumber = 1;\n    }\n  }\n}\n\n// Format the new SO number: SO-YYYYMM-XXXX\nconst newSONumber = `SO-${currentYearMonth}-${String(nextNumber).padStart(4, '0')}`;\n\n// Return all data including the new SO number\nreturn {\n  json: {\n    so_number: newSONumber,\n    ...calculatedData\n  }\n};"
+      },
+      "id": "5c4319c3-47b0-458b-b7ee-585e12ea58cd",
+      "name": "Generate Next SO Number",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2288,
+        368
+      ],
+      "notes": "Safely increments SO number. Format: SO-YYYYMM-XXXX. Resets numbering on new month, otherwise increments."
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "collection": "sales_orders",
+        "fields": "json",
+        "options": {}
+      },
+      "id": "4be4e267-c501-43d4-af7c-ecf785f7866f",
+      "name": "Insert Sales Order to MongoDB",
+      "type": "n8n-nodes-base.mongoDb",
+      "typeVersion": 1,
+      "position": [
+        2496,
+        368
+      ],
+      "credentials": {
+        "mongoDb": {
+          "id": "a9aLad3I90b93HYh",
+          "name": "MongoDB account"
+        }
+      },
+      "notes": "Inserts the complete sales order document into sales_orders collection"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Get the order data from Generate Next SO Number node\nconst orderData = $json;\n\n// Ensure notes is not null (can be empty string)\nconst notes = orderData.notes !== null && orderData.notes !== undefined ? orderData.notes : \"\";\n\n// Prepare the document to insert - matching exact schema\nconst now = new Date();\nconst deliveryDate = new Date();\ndeliveryDate.setDate(deliveryDate.getDate() + 7); // 7 days from now\n\nconst salesOrderDocument = {\n  so_number: orderData.so_number,\n  order_date: now,\n  delivery_date: deliveryDate,\n  status: \"draft\",\n  items: [\n    {\n      product_name: orderData.product_name,\n      quantity: orderData.quantity,\n      price: orderData.price,\n      line_total: orderData.line_total\n    }\n  ],\n  subtotal: orderData.subtotal,\n  tax_amount: orderData.tax_amount,\n  discount_amount: orderData.discount_amount,\n  total_amount: orderData.total_amount,\n  notes: notes,\n  created_at: now,\n  updated_at: now\n};\n\nreturn {\n  json: salesOrderDocument\n};"
+      },
+      "id": "2f8c24fd-7685-4e31-98cc-5378305043f3",
+      "name": "Prepare MongoDB Document",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2288,
+        368
+      ],
+      "notes": "Constructs the complete sales order document matching the exact MongoDB schema with all required fields"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Get the order data from Insert Sales Order to MongoDB node\n// The inserted document is returned by MongoDB\nconst orderData = $json;\n\n// Format the response message for Retell AI to speak\nconst responseMessage = `Your sales order ${orderData.so_number} has been created. Total amount is ₹${orderData.total_amount}.`;\n\nreturn {\n  json: {\n    message: responseMessage,\n    so_number: orderData.so_number,\n    total_amount: orderData.total_amount\n  }\n};"
+      },
+      "id": "d858dadb-4cb0-4077-8c46-412914c63c04",
+      "name": "Format Response for Retell AI",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        2688,
+        368
+      ],
+      "notes": "Creates voice-friendly confirmation message with SO number and total amount"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "e8325ef7-b044-4aa7-8a70-6f2478f3c45a",
+      "name": "Return Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2896,
+        368
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Receive Order from Retell AI": {
+      "main": [
+        [
+          {
+            "node": "Validate Input Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input Data": {
+      "main": [
+        [
+          {
+            "node": "Fetch Product Price from MongoDB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Product Price from MongoDB": {
+      "main": [
+        [
+          {
+            "node": "Check Product Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Product Found": {
+      "main": [
+        [
+          {
+            "node": "Calculate Subtotal, Tax, and Total",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Product Not Found Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Subtotal, Tax, and Total": {
+      "main": [
+        [
+          {
+            "node": "Get Latest Sales Order Number",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Latest Sales Order Number": {
+      "main": [
+        [
+          {
+            "node": "Generate Next SO Number",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Next SO Number": {
+      "main": [
+        [
+          {
+            "node": "Prepare MongoDB Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare MongoDB Document": {
+      "main": [
+        [
+          {
+            "node": "Insert Sales Order to MongoDB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Sales Order to MongoDB": {
+      "main": [
+        [
+          {
+            "node": "Format Response for Retell AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response for Retell AI": {
+      "main": [
+        [
+          {
+            "node": "Return Success Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "53a7e3ec-31ab-45bb-8d21-3b886b60dacb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "adf9d8550206145445788af8f6cfd613a0296e9c5937756d4e3c7400803cbc77"
+  },
+  "id": "sCEziQ76PALqF3snlltxK",
+  "tags": []
+}
